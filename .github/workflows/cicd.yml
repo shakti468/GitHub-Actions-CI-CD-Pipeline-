@@ -5,11 +5,10 @@ on:
     branches:
       - main
       - staging
-  release:
-    types: [created]
+  pull_request:
 
 jobs:
-  build:
+  build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,20 +29,42 @@ jobs:
       run: |
         pytest
 
-  deploy-staging:
-    needs: build
-    if: github.ref == 'refs/heads/staging'
-    runs-on: ubuntu-latest
-
-    steps:
     - name: Deploy to Staging
-      run: echo "✅ Deployed to staging server"
+      if: github.ref == 'refs/heads/staging'
+      run: |
+        echo "$SSH_PRIVATE_KEY" > key.pem
+        chmod 600 key.pem
+        ssh -o StrictHostKeyChecking=no -i key.pem $EC2_USER@$EC2_HOST << 'EOF'
+          pkill -f app.py || true
+          rm -rf app
+          git clone https://github.com/shakti468/-Jenkins-CI-CD-Pipeline.git app
+          cd app
+          sudo apt update
+          sudo apt install -y python3-pip
+          pip3 install -r requirements.txt
+          nohup python3 app.py > flask.log 2>&1 &
+        EOF
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-  deploy-production:
-    needs: build
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-
-    steps:
     - name: Deploy to Production
-      run: echo "🚀 Deployed to production"
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        echo "$SSH_PRIVATE_KEY" > key.pem
+        chmod 600 key.pem
+        ssh -o StrictHostKeyChecking=no -i key.pem $EC2_USER@$EC2_HOST << 'EOF'
+          pkill -f app.py || true
+          rm -rf app
+          git clone https://github.com/shakti468/-Jenkins-CI-CD-Pipeline.git app
+          cd app
+          sudo apt update
+          sudo apt install -y python3-pip
+          pip3 install -r requirements.txt
+          nohup python3 app.py > flask.log 2>&1 &
+        EOF
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
